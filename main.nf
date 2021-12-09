@@ -185,7 +185,7 @@ process mafft {
     path "*_mafft.fa", emit: ogs_aligned
     path "*.txt"
     path "*_command.txt", emit: command
-    path "*"
+    path "list_of_species.txt", emit: species_list
 
     script:
     // Use mafft to align sequences within each orthogroup file
@@ -225,6 +225,7 @@ process mafft {
     """
     for fa in ${filtered_orthogroups}; do $commandmafft "\$fa" > \${fa/.*/_mafft.fa}; done 
     echo "$commandmafft" > 'mafft_command.txt'
+    grep --no-filename '^>' *.fa | tr -d '>' | sed 's/@.*//g' | sort | uniq > list_of_species.txt
     """
 }
 
@@ -298,6 +299,62 @@ process iqtree {
 
 }
 
+process formating1 {
+    publishDir "${params.output}/formating1_out", mode: 'copy'
+
+    input:
+    // All orthogroup sequences derived from the selected dataset.
+    path(treefile)
+
+    output:
+    // Direct filtered orthogroup files to mafft
+    path "*.tre", emit: gene_tre
+    path "*"
+
+
+    script:
+    // Remove orthogroups that are uninformative due to a) a low number of different species or b) too many sequences
+
+    """
+    for file in $treefile; do cat "\$file" > "\${file/_mafft.fa.treefile/.tre}"; done
+    """
+
+}
+
+process formating2 {
+    publishDir "${params.output}/formating2_out", mode: 'copy'
+
+    input:
+    // All orthogroup sequences derived from the selected dataset.
+    path(species_list)
+    path(tre)
+    path(alignments)
+
+    output:
+    // Direct filtered orthogroup files to mafft
+    path "*"
+
+
+    script:
+    // Remove orthogroups that are uninformative due to a) a low number of different species or b) too many sequences
+
+    """
+    mkdir -p phylopypruner_prep
+    for filename in $tre
+    do
+      while read -r otu
+      do
+        sed -i "s/\${otu}_/(\${otu}@/g" "\${filename}"
+      done < "$species_list"
+      mv "\$filename" $alignments phylopypruner_prep
+    done
+    """
+
+}
+
+    //for file in *.treefile; do echo "\$file" > "\${file%.*}.tre"; done
+    //for fa in ${filtered_orthogroups}; do $commandmafft "\$fa" > \${fa/.*/_mafft.fa}; done 
+
 
 //    """
 //    for alignment in ${og_alignment}; do iqtree -s "\$alignment" -m LG -B 1000 -T AUTO; done 
@@ -329,5 +386,7 @@ workflow {
     filtering(orthofinder.out.ogs.collect())
     mafft(filtering.out.filtered_ogs)
     iqtree(mafft.out.ogs_aligned)
-    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
+    formating1(iqtree.out.gene_tree_files)
+    formating2(mafft.out.species_list, formating1.out.gene_tre, mafft.out.ogs_aligned)
+//    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
 }
