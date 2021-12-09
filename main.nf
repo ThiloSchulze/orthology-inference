@@ -359,7 +359,7 @@ process formating2 {
 //    """
 //    for alignment in ${og_alignment}; do iqtree -s "\$alignment" -m LG -B 1000 -T AUTO; done 
 //    echo "for alignment in ${og_alignment}; do iqtree -s "\$alignment" -m LG -B 1000 -T AUTO; done" > iqtree_command.txt
-//    """
+///    """
 
 process settings {
     publishDir "${params.output}/commands", mode: 'copy'
