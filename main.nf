@@ -229,6 +229,10 @@ process mafft {
     """
 }
 
+//  for faa in ${og}; do
+//  mafft \$faa > \${faa/.faa/_mafft.faa}
+//  done
+//"phylopypruner_prep/\${fa/_mafft.fa/.fa}"
 //    """
 //    for fa in ${filtered_orthogroups}; do mafft --thread $task.cpus "\$fa" > \${fa/.*/_mafft.fa}; done 
 //    echo "for fa in ${filtered_orthogroups}; do mafft "\$fa" > \${fa/.*/_mafft.fa}; done" > mafft_command.txt
@@ -299,30 +303,8 @@ process iqtree {
 
 }
 
-process formating1 {
-    publishDir "${params.output}/formating1_out", mode: 'copy'
-
-    input:
-    // All orthogroup sequences derived from the selected dataset.
-    path(treefile)
-
-    output:
-    // Direct filtered orthogroup files to mafft
-    path "*.tre", emit: gene_tre
-    path "*"
-
-
-    script:
-    // Remove orthogroups that are uninformative due to a) a low number of different species or b) too many sequences
-
-    """
-    for file in $treefile; do cat "\$file" > "\${file/_mafft.fa.treefile/.tre}"; done
-    """
-
-}
-
-process formating2 {
-    publishDir "${params.output}/formating2_out", mode: 'copy'
+process formating {
+    publishDir "${params.output}/formating_out", mode: 'copy'
 
     input:
     // All orthogroup sequences derived from the selected dataset.
@@ -332,7 +314,7 @@ process formating2 {
 
     output:
     // Direct filtered orthogroup files to mafft
-    path "*"
+    path "phylopypruner_prep", type: 'dir'
 
 
     script:
@@ -346,8 +328,14 @@ process formating2 {
       do
         sed -i "s/\${otu}_/(\${otu}@/g" "\${filename}"
       done < "$species_list"
-      mv "\$filename" $alignments phylopypruner_prep
+      mv "\$filename" "phylopypruner_prep/\${filename/_mafft.fa.treefile/.tre}"
     done
+
+    for mafft_fa in $alignments
+    do mv "\$mafft_fa" "phylopypruner_prep/\${mafft_fa/_mafft.fa/.fa}"
+    done
+
+    phylopypruner --dir 'phylopypruner_prep/'
     """
 
 }
@@ -386,7 +374,6 @@ workflow {
     filtering(orthofinder.out.ogs.collect())
     mafft(filtering.out.filtered_ogs)
     iqtree(mafft.out.ogs_aligned)
-    formating1(iqtree.out.gene_tree_files)
-    formating2(mafft.out.species_list, formating1.out.gene_tre, mafft.out.ogs_aligned)
+    formating(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
 //    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
 }
