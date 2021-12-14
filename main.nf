@@ -117,7 +117,7 @@ def guideMessage() {
 
 process orthofinder {
     // Copies output file in output folder
-    publishDir "${params.output}/OrthoFinder_out", mode: 'copy'
+    publishDir "${params.output}/OrthoFinder", mode: 'copy'
 
     input:
     // All files in the specified --dataset 'directory/'
@@ -149,7 +149,7 @@ process orthofinder {
 }
 
 process filtering {
-    publishDir "${params.output}/filtering_out", mode: 'copy'
+    publishDir "${params.output}/filtering", mode: 'copy'
 
     input:
     // All orthogroup sequences derived from the selected dataset.
@@ -174,7 +174,7 @@ process filtering {
 
 
 process mafft {
-    publishDir "${params.output}/mafft_out", mode: 'copy'
+    publishDir "${params.output}/mafft", mode: 'copy'
 
     input:
     // All filtered orthogroups
@@ -239,7 +239,7 @@ process mafft {
 //    """
 
 process iqtree {
-    publishDir "${params.output}/iqtree_out", mode: 'copy'
+    publishDir "${params.output}/iqtree", mode: 'copy'
 
     input:
     // All filtered orthogroup files with aligned sequences
@@ -303,18 +303,19 @@ process iqtree {
 
 }
 
-process formating {
-    publishDir "${params.output}/formating_out", mode: 'copy'
+process iq_phylo {
+    publishDir "${params.output}/iq_phylo", mode: 'copy'
 
-    input:
+input:
     // All orthogroup sequences derived from the selected dataset.
     path(species_list)
     path(tre)
-    path(alignments)
+    path(mafft_alignments)
 
     output:
     // Direct filtered orthogroup files to mafft
     path "phylopypruner_prep", type: 'dir'
+    path "*"
 
 
     script:
@@ -331,13 +332,13 @@ process formating {
       mv "\$filename" "phylopypruner_prep/\${filename/_mafft.fa.treefile/.tre}"
     done
 
-    for mafft_fa in $alignments
+    for mafft_fa in $mafft_alignments
     do mv "\$mafft_fa" "phylopypruner_prep/\${mafft_fa/_mafft.fa/.fa}"
     done
 
     phylopypruner --dir 'phylopypruner_prep/'
     """
-
+//     phylopypruner --dir 'phylopypruner_prep/'
 }
 
     //for file in *.treefile; do echo "\$file" > "\${file%.*}.tre"; done
@@ -349,6 +350,63 @@ process formating {
 //    echo "for alignment in ${og_alignment}; do iqtree -s "\$alignment" -m LG -B 1000 -T AUTO; done" > iqtree_command.txt
 ///    """
 
+process fasttrees {
+    publishDir "${params.output}/FastTree", mode: 'copy'
+
+    input:
+    // All filtered orthogroup files with aligned sequences
+    path(og_alignment)
+
+    output:
+    // Direct infered gene trees to phylopypruner
+    path "*.tre", emit: tre_files
+    path "*_command.txt", emit: command
+
+    script:
+
+
+    """
+    for alignment in ${og_alignment}; do fasttree < "\$alignment" > "\${alignment%_mafft*}.tre"; done 
+    echo "for alignment in ${og_alignment}; do fasttree < "\$alignment" > "\${alignment%_mafft*}.tre"; done" > FastTree_command.txt
+    """
+
+}
+
+
+process fast_phylo {
+    publishDir "${params.output}/fast_phylo", mode: 'copy'
+
+    input:
+    // All orthogroup sequences derived from the selected dataset.
+    path(tre_file)
+    path(alignments)
+
+    output:
+    // Direct filtered orthogroup files to mafft
+    path "phylopypruner_prep", type: 'dir', emit: phylo_prep
+    path "*"
+
+
+    script:
+    // Remove orthogroups that are uninformative due to a) a low number of different species or b) too many sequences
+
+    """
+    mkdir -p phylopypruner_prep
+    for tre in $tre_file
+    do
+      mv "\$tre" "phylopypruner_prep/\$tre"
+    done
+
+    for alignment in $alignments
+    do 
+      mv "\$alignment" "phylopypruner_prep/\${alignment/%_mafft.fa}.fa"
+    done
+    phylopypruner --dir 'phylopypruner_prep/'
+    """
+  //  phylopypruner --dir 'phylopypruner_prep/'
+}
+
+
 process settings {
     publishDir "${params.output}/commands", mode: 'copy'
 
@@ -357,6 +415,7 @@ process settings {
     path(command2)
     path(command3)
     path(command4)
+    path(command5)
 
     output:
     // Complete list of pipeline settings
@@ -364,7 +423,7 @@ process settings {
 
     script:
     """
-    cat $command1 $command2 $command3 $command4 > command_list.txt
+    cat $command1 $command2 $command3 $command4 $command5 > command_list.txt
     """
 
 }
@@ -373,7 +432,13 @@ workflow {
     orthofinder(ch_sequences)
     filtering(orthofinder.out.ogs.collect())
     mafft(filtering.out.filtered_ogs)
-    iqtree(mafft.out.ogs_aligned)
-    formating(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
+    if (params.fasttree) {
+      fasttrees(mafft.out.ogs_aligned)
+      fast_phylo(fasttrees.out.tre_files, mafft.out.ogs_aligned)
+    }
+    else {
+      iqtree(mafft.out.ogs_aligned)
+      iq_phylo(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
+    }
 //    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
 }
