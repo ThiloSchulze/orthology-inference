@@ -341,14 +341,6 @@ input:
 //     phylopypruner --dir 'phylopypruner_prep/'
 }
 
-    //for file in *.treefile; do echo "\$file" > "\${file%.*}.tre"; done
-    //for fa in ${filtered_orthogroups}; do $commandmafft "\$fa" > \${fa/.*/_mafft.fa}; done 
-
-
-//    """
-//    for alignment in ${og_alignment}; do iqtree -s "\$alignment" -m LG -B 1000 -T AUTO; done 
-//    echo "for alignment in ${og_alignment}; do iqtree -s "\$alignment" -m LG -B 1000 -T AUTO; done" > iqtree_command.txt
-///    """
 
 process fasttrees {
     publishDir "${params.output}/FastTree", mode: 'copy'
