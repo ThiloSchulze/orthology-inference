@@ -139,7 +139,7 @@ process orthofinder {
         flagsOrthoFinder += " -I $params.I"
     if ( params.S )
         flagsOrthoFinder += " -S $params.S"
-    commandOrthoFinder = "orthofinder.py $flagsOrthoFinder"
+    commandOrthoFinder = "orthofinder $flagsOrthoFinder"
 
     """
     $commandOrthoFinder
@@ -491,17 +491,17 @@ workflow {
     orthofinder(ch_sequences)
     filtering(orthofinder.out.ogs.collect())
     mafft(filtering.out.filtered_ogs)
-    if (params.fasttree) {
-      fasttrees(mafft.out.ogs_aligned)
-      fast_to_ppp(fasttrees.out.tre_files, mafft.out.ogs_aligned)
-      ppp(fast_to_ppp.out.phylo_prep)
-      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, fasttrees.out.command, ppp.out.command)
-    }
-    else {
+    if (params.iqtree) {
       iqtree(mafft.out.ogs_aligned)
       iq_to_ppp(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
       ppp(fast_to_ppp.out.phylo_prep)
       settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
+    }
+    else {
+      fasttrees(mafft.out.ogs_aligned)
+      fast_to_ppp(fasttrees.out.tre_files, mafft.out.ogs_aligned)
+      ppp(fast_to_ppp.out.phylo_prep)
+      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, fasttrees.out.command, ppp.out.command)
     }
 
 //    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)

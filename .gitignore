@@ -1,16 +1,6 @@
 .nextflow/**
 .nextflow.log*
 .command.*
-short*
-Myco*
 work/**
 inference_out/**
 .vscode/**
-bin/E*
-bin/L*
-bin/O*
-bin/o*
-bin/R*
-bin/s*
-bin/v*
-bin/t*
