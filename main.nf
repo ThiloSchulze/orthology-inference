@@ -22,7 +22,7 @@ ch_sequences = Channel
 
 def helpMessage() {
     log.info"""
-    Basic usage:
+    Basic usage example:
         (1) Amino acid data:
         nextflow run main.nf --dataset 'directory/' --m LG
         (2) Nucleotide data:
@@ -151,6 +151,8 @@ process orthofinder {
 process filtering {
     publishDir "${params.output}/filtering", mode: 'copy'
 
+    beforeScript 'ulimit -s unlimited'
+
     input:
     // All orthogroup sequences derived from the selected dataset.
     path(orthogroups)
@@ -163,6 +165,7 @@ process filtering {
 
     script:
     // Remove orthogroups that are uninformative due to a) a low number of different species or b) too many sequences
+
 
 
     """
@@ -303,8 +306,8 @@ process iqtree {
 
 }
 
-process iq_phylo {
-    publishDir "${params.output}/iq_phylo", mode: 'copy'
+process iq_to_ppp {
+    publishDir "${params.output}/iq_to_ppp", mode: 'copy'
 
 input:
     // All orthogroup sequences derived from the selected dataset.
@@ -327,7 +330,7 @@ input:
     do
       while read -r otu
       do
-        sed -i "s/\${otu}_/(\${otu}@/g" "\${filename}"
+        sed -i "s/\${otu}_/\${otu}@/g" "\${filename}"
       done < "$species_list"
       mv "\$filename" "phylopypruner_prep/\${filename/_mafft.fa.treefile/.tre}"
     done
@@ -359,14 +362,14 @@ process fasttrees {
 
     """
     for alignment in ${og_alignment}; do fasttree < "\$alignment" > "\${alignment%_mafft*}.tre"; done 
-    echo "for alignment in ${og_alignment}; do fasttree < "\$alignment" > "\${alignment%_mafft*}.tre"; done" > FastTree_command.txt
+    echo "fasttree < "\$alignment" > \${alignment%_mafft*}.tre" > FastTree_command.txt
     """
 
 }
 
 
-process fast_phylo {
-    publishDir "${params.output}/fast_phylo", mode: 'copy'
+process fast_to_ppp {
+    publishDir "${params.output}/fast_to_ppp", mode: 'copy'
 
     input:
     // All orthogroup sequences derived from the selected dataset.
@@ -393,10 +396,70 @@ process fast_phylo {
     do 
       mv "\$alignment" "phylopypruner_prep/\${alignment/%_mafft.fa}.fa"
     done
-    phylopypruner --dir 'phylopypruner_prep/'
     """
   //  phylopypruner --dir 'phylopypruner_prep/'
 }
+
+process ppp {
+    publishDir "${params.output}/phylopypruner", mode: 'copy'
+
+    input:
+    // All orthogroup sequences derived from the selected dataset.
+    path(pruner_prep)
+
+    output:
+    path "phylopypruner_output", type: 'dir'
+    path "*_command.txt", emit: command
+
+
+    script:
+    // Infer a gene tree from each filtered orthogroup file
+  flagsphylopypruner = "--dir $pruner_prep --threads $params.threads --output phylopypruner_output"
+  if ( params.no_plot )
+    flagsphylopypruner += " --no-plot"
+  if ( params.no_supermatrix )
+    flagsphylopypruner += " --no-supermatrix"
+  if ( params.min_len )
+    flagsphylopypruner += " --min-len $params.min_len"
+  if ( params.trim_lb )
+    flagsphylopypruner += " --trim-lb $params.trim_lb"
+  if ( params.min_pdist )
+    flagsphylopypruner += " --min-pdist $params.min_pdist"
+  if ( params.min_support )
+    flagsphylopypruner += " --min-support $params.min_support"
+  if ( params.trim_divergent )
+    flagsphylopypruner += " --trim-divergent $params.trim_divergent"
+  if ( params.trim_freq_paralogs )
+    flagsphylopypruner += " --trim-freq-paralogs $params.trim_freq_paralogs"
+  if ( params.include )
+    flagsphylopypruner += " --include $params.include"
+  if ( params.outgroup )
+    flagsphylopypruner += " --outgroup $params.outgroup"
+  if ( params.root )  
+    flagsphylopypruner += " --root $params.root"
+  if ( params.prune )
+    flagsphylopypruner += " --prune $params.prune" //LS
+  if ( params.force_inclusion )
+    flagsphylopypruner += " --force-inclusion $params.force_inclusion"
+  if ( params.min_taxa )
+    flagsphylopypruner += " --min-taxa $params.min_taxa"
+  if ( params.min_otu_occupancy )
+    flagsphylopypruner += " --min-otu-occupancy $params.min_otu_occupancy"
+  if ( params.min_gene_occupancy )
+    flagsphylopypruner += " --min-gene-occupancy $params.min_gene_occupancy"
+  if ( params.subclades )
+    flagsphylopypruner += " --subclades $params.min_otu_occupancy"
+  if ( params.jackknife )
+    flagsphylopypruner += " --jackknife $params.jackknife"
+  commandphylopypruner = "phylopypruner $flagsphylopypruner"
+
+    """
+    $commandphylopypruner
+    echo "$commandphylopypruner" > phylopypruner_command.txt
+    """
+  //  phylopypruner --dir 'phylopypruner_prep/'
+}
+
 
 
 process settings {
@@ -415,7 +478,11 @@ process settings {
 
     script:
     """
-    cat $command1 $command2 $command3 $command4 $command5 > command_list.txt
+    command_list=\$( cat $command1 $command2 $command3 $command4 $command5 )
+    echo "Input
+    =====
+
+    \$command_list" > command_list.txt
     """
 
 }
@@ -426,11 +493,16 @@ workflow {
     mafft(filtering.out.filtered_ogs)
     if (params.fasttree) {
       fasttrees(mafft.out.ogs_aligned)
-      fast_phylo(fasttrees.out.tre_files, mafft.out.ogs_aligned)
+      fast_to_ppp(fasttrees.out.tre_files, mafft.out.ogs_aligned)
+      ppp(fast_to_ppp.out.phylo_prep)
+      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, fasttrees.out.command, ppp.out.command)
     }
     else {
       iqtree(mafft.out.ogs_aligned)
-      iq_phylo(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
+      iq_to_ppp(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
+      ppp(fast_to_ppp.out.phylo_prep)
+      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
     }
+
 //    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
 }
