@@ -226,7 +226,7 @@ process mafft {
   commandmafft = "$params.mafft $flagsmafft"
 
     """
-    for fa in ${filtered_orthogroups}; do $commandmafft "\$fa" > \${fa/.*/_mafft.fa}; done 
+    $commandmafft $filtered_orthogroups > ${filtered_orthogroups.simpleName}_mafft.fa 
     echo "$commandmafft" > 'mafft_command.txt'
     grep --no-filename '^>' *.fa | tr -d '>' | sed 's/@.*//g' | sort | uniq > list_of_species.txt
     """
@@ -361,8 +361,8 @@ process fasttrees {
 
 
     """
-    for alignment in ${og_alignment}; do fasttree < "\$alignment" > "\${alignment%_mafft*}.tre"; done 
-    echo "fasttree < "\$alignment" > \${alignment%_mafft*}.tre" > FastTree_command.txt
+    fasttree < "$og_alignment" > "${og_alignment.simpleName}.tre"
+    echo "fasttree < $og_alignment > ${og_alignment.simpleName}.tre" > FastTree_command.txt
     """
 
 }
@@ -490,16 +490,16 @@ process settings {
 workflow {
     orthofinder(ch_sequences)
     filtering(orthofinder.out.ogs.collect())
-    mafft(filtering.out.filtered_ogs)
+    mafft(filtering.out.filtered_ogs.flatten())
     if (params.iqtree) {
       iqtree(mafft.out.ogs_aligned)
-      iq_to_ppp(mafft.out.species_list, iqtree.out.gene_tree_files, mafft.out.ogs_aligned)
+      iq_to_ppp(mafft.out.species_list, iqtree.out.gene_tree_files.collect(), mafft.out.ogs_aligned.collect())
       ppp(fast_to_ppp.out.phylo_prep)
       settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
     }
     else {
       fasttrees(mafft.out.ogs_aligned)
-      fast_to_ppp(fasttrees.out.tre_files, mafft.out.ogs_aligned)
+      fast_to_ppp(fasttrees.out.tre_files.collect(), mafft.out.ogs_aligned.collect())
       ppp(fast_to_ppp.out.phylo_prep)
       settings(orthofinder.out.command, filtering.out.command, mafft.out.command, fasttrees.out.command, ppp.out.command)
     }
