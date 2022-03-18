@@ -29,16 +29,17 @@ def helpMessage() {
         nextflow run main.nf --dataset 'directory/' --d --m HKY+F
 
     Application example:
-        nextflow run main.nf --dataset 'directory/' --filter_species 0.8 --max_sequence 300 --maxiterate 1000 --ufboot 1000 --m MFP
+        nextflow run main.nf --dataset 'directory/' --filter_species 0.8 --max_sequence 300 --maxiterate 1000 --ufboot 1000 --threads 4 --min_len 100 --trim_lb 5 --min_support 0.75 --min_taxa 10 --min_otu_occupancy 0.1 --min_gene_occupancy 0.1
 
     Description:
-        A pipeline for graph-based and tree-based orthology inference of assembled WGS data
+        A pipeline for graph-based and tree-based orthology inference of assembled genome or transcriptome data
 
     Pipeline summary:
         1. Graph-based orthology inference using OrthoFinder
         2. Removal of orthogroups with low information content
-        3. Alignment of gene trees using mafft
-        4. Gene tree inference using IQTREE
+        3. Alignment of gene trees using MAFFT
+        4. Gene tree inference using FastTree (optional: IQTREE)
+        5. Tree-based orthology inference using PhyloPyPruner
   
     Mandatory arguments:
         --dataset           path to directory containing your input fasta files. One file per species.
@@ -50,7 +51,7 @@ def helpMessage() {
     Resource allocation:
         --memory            memory used by the pipeline  (default: $params.memory)
         --threads           number of threads to utilize (default: $params.threads)
-        --time          runtime of the pipeline      (default: $params.time)
+        --time              runtime of the pipeline      (default: $params.time)
 
     Graph-based orthology inference (OrthoFinder):
         --d                 Input is DNA sequences
@@ -300,7 +301,7 @@ process iqtree {
   commandiqtree = "iqtree $flagsiqtree"
 
     """
-    for alignment in ${og_alignment}; do $commandiqtree -s "\$alignment"; done 
+    $commandiqtree -s $og_alignment
     echo "$commandiqtree" > iqtree_command.txt
     """
 
@@ -316,13 +317,13 @@ input:
     path(mafft_alignments)
 
     output:
-    // Direct filtered orthogroup files to mafft
-    path "phylopypruner_prep", type: 'dir'
+    // Direct alignments and gene trees files to PhyloPypruner
+    path "phylopypruner_prep", type: 'dir', emit: phylo_prep
     path "*"
 
 
     script:
-    // Remove orthogroups that are uninformative due to a) a low number of different species or b) too many sequences
+    // Prepare PhyloPyPruner input and fix formating error
 
     """
     mkdir -p phylopypruner_prep
@@ -339,13 +340,12 @@ input:
     do mv "\$mafft_fa" "phylopypruner_prep/\${mafft_fa/_mafft.fa/.fa}"
     done
 
-    phylopypruner --dir 'phylopypruner_prep/'
     """
-//     phylopypruner --dir 'phylopypruner_prep/'
+// phylopypruner --dir 'phylopypruner_prep/'
 }
 
 
-process fasttrees {
+process fasttree {
     publishDir "${params.output}/FastTree", mode: 'copy'
 
     input:
@@ -361,7 +361,8 @@ process fasttrees {
 
 
     """
-    fasttree < "$og_alignment" > "${og_alignment.simpleName}.tre"
+    input=$og_alignment
+    fasttree < "$og_alignment" > "\${input%_mafft.fa}.tre"
     echo "fasttree < $og_alignment > ${og_alignment.simpleName}.tre" > FastTree_command.txt
     """
 
@@ -396,6 +397,7 @@ process fast_to_ppp {
     do 
       mv "\$alignment" "phylopypruner_prep/\${alignment/%_mafft.fa}.fa"
     done
+    
     """
   //  phylopypruner --dir 'phylopypruner_prep/'
 }
@@ -457,7 +459,7 @@ process ppp {
     $commandphylopypruner
     echo "$commandphylopypruner" > phylopypruner_command.txt
     """
-  //  phylopypruner --dir 'phylopypruner_prep/'
+
 }
 
 
@@ -494,15 +496,14 @@ workflow {
     if (params.iqtree) {
       iqtree(mafft.out.ogs_aligned)
       iq_to_ppp(mafft.out.species_list, iqtree.out.gene_tree_files.collect(), mafft.out.ogs_aligned.collect())
-      ppp(fast_to_ppp.out.phylo_prep)
-      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
+      ppp(iq_to_ppp.out.phylo_prep)
+      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command, ppp.out.command)
     }
     else {
-      fasttrees(mafft.out.ogs_aligned)
-      fast_to_ppp(fasttrees.out.tre_files.collect(), mafft.out.ogs_aligned.collect())
+      fasttree(mafft.out.ogs_aligned)
+      fast_to_ppp(fasttree.out.tre_files.collect(), mafft.out.ogs_aligned.collect())
       ppp(fast_to_ppp.out.phylo_prep)
-      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, fasttrees.out.command, ppp.out.command)
+      settings(orthofinder.out.command, filtering.out.command, mafft.out.command, fasttree.out.command, ppp.out.command)
     }
 
-//    settings(orthofinder.out.command, filtering.out.command, mafft.out.command, iqtree.out.command)
 }
