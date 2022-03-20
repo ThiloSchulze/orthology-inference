@@ -24,12 +24,12 @@ def helpMessage() {
     log.info"""
     Basic usage example:
         (1) Amino acid data:
-        nextflow run main.nf --dataset 'directory/' --m LG
+        nextflow run main.nf --dataset 'directory/'
         (2) Nucleotide data:
-        nextflow run main.nf --dataset 'directory/' --d --m HKY+F
+        nextflow run main.nf --dataset 'directory/' --d
 
     Application example:
-        nextflow run main.nf --dataset 'directory/' --filter_species 0.8 --max_sequence 300 --maxiterate 1000 --ufboot 1000 --threads 4 --min_len 100 --trim_lb 5 --min_support 0.75 --min_taxa 10 --min_otu_occupancy 0.1 --min_gene_occupancy 0.1
+        nextflow run main.nf --dataset 'directory/' --filter_species 0.8 --max_sequence 300 --threads 4 --maxiterate 1000 --min_len 100 --trim_lb 5 --min_support 0.70 --min_taxa 4 --min_otu_occupancy 0.1 --min_gene_occupancy 0.1
 
     Description:
         A pipeline for graph-based and tree-based orthology inference of assembled genome or transcriptome data
